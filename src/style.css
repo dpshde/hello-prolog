@@ -314,7 +314,7 @@ textarea {
   border: 1px solid var(--border-strong);
   border-top: none;
   border-radius: 0 0 8px 8px;
-  background: var(--accent-bg);
+  background: var(--surface);
   box-shadow:
     0 4px 6px rgba(28, 25, 23, 0.03),
     0 12px 24px rgba(28, 25, 23, 0.06);
@@ -369,11 +369,11 @@ textarea {
 }
 
 .autocomplete-item:hover {
-  background: color-mix(in srgb, var(--accent-bg) 60%, var(--surface));
+  background: var(--accent-bg);
 }
 
 .autocomplete-item.is-active {
-  background: var(--surface);
+  background: var(--accent-bg);
 }
 
 .autocomplete-item.is-active {
