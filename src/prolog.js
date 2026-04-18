@@ -4,67 +4,92 @@ const pl = getTauProlog()
 
 export const PRESETS = [
   {
-    id: 'celestial-lattice',
-    name: 'Celestial Lattice',
-    blurb: 'Travelers, planets, alliances, and orbital facts arranged like a navigable constellation.',
-    query: 'stationed(Who, Where).',
+    id: 'abraham-family',
+    name: 'Abraham Family',
+    blurb: 'Patriarchs, journeys, covenant moments, and household relationships from Genesis.',
+    query: 'travels(Person, From, To).',
     program: `:- use_module(library(lists)).
 
-traveler(ada).
-traveler(orion).
-traveler(lyra).
+patriarch(abraham).
+matriarch(sarah).
+son(isaac).
+servant(hagar).
+kinsman(lot).
 
-world(mercury).
-world(venus).
-world(mars).
+place(ur).
+place(haran).
+place(canaan).
+place(gerar).
+place(moriah).
+place(wilderness).
 
-orbits(mercury, sun).
-orbits(venus, sun).
-orbits(mars, sun).
+spouse(abraham, sarah).
+parent(abraham, isaac).
+parent(sarah, isaac).
+kinsman_of(abraham, lot).
 
-ally(ada, orion).
-ally(orion, lyra).
-ally(lyra, ada).
+travels(abraham, ur, haran).
+travels(abraham, haran, canaan).
+travels(abraham, gerar, moriah).
 
-stationed(ada, mars).
-stationed(orion, venus).
-stationed(lyra, mercury).
+covenant(abraham, circumcision, canaan).
+encounter(hagar, angel_of_yhwh, wilderness).
+test(abraham, isaac, moriah).
+burial(sarah, hebron, machpelah).
 
-mission(aurora, mars, survey).
-mission(vesper, venus, archive).
-
-reachable(X, Y) :- ally(X, Y).
-favorite_world(Traveler, World) :- stationed(Traveler, World).`,
+descendant(X, Y) :- parent(X, Y).
+heir(Child) :- parent(abraham, Child).`,
   },
   {
-    id: 'archive-garden',
-    name: 'Archive Garden',
-    blurb: 'A quieter starter world of scribes, codices, shelves, and multi-argument dossier facts.',
-    query: 'catalogues(Scribe, Codex).',
-    program: `scribe(iris).
-scribe(nova).
-scribe(sol).
+    id: 'pauline-letters',
+    name: 'Pauline Letters',
+    blurb: 'Paul, his companions, churches, cities, letters, and themes across the New Testament.',
+    query: 'sent_to(Letter, City).',
+    program: `apostle(paul).
+companion(timothy).
+companion(silas).
+coworker(priscilla).
+coworker(aquila).
 
-codex(ember).
-codex(tide).
-codex(marrow).
+city(rome).
+city(corinth).
+city(ephesus).
+city(philippi).
+city(thessalonica).
 
-shelf(east).
-shelf(north).
+letter(romans).
+letter(corinthians_1).
+letter(ephesians).
+letter(philippians).
+letter(thessalonians_1).
 
-catalogues(iris, ember).
-catalogues(nova, tide).
-catalogues(sol, marrow).
+writes(paul, romans).
+writes(paul, corinthians_1).
+writes(paul, ephesians).
+writes(paul, philippians).
+writes(paul, thessalonians_1).
 
-references(ember, tide).
-references(tide, marrow).
+sent_to(romans, rome).
+sent_to(corinthians_1, corinth).
+sent_to(ephesians, ephesus).
+sent_to(philippians, philippi).
+sent_to(thessalonians_1, thessalonica).
 
-stored_on(ember, east).
-stored_on(tide, north).
-stored_on(marrow, east).
+travels_with(paul, timothy).
+travels_with(paul, silas).
+married(priscilla, aquila).
+hosts(priscilla, ephesus).
+hosts(aquila, ephesus).
 
-dossier(ember, atlas, sealed).
-dossier(tide, tidepool, open).`,
+theme(romans, justification).
+theme(corinthians_1, resurrection).
+theme(ephesians, unity).
+theme(philippians, joy).
+theme(thessalonians_1, hope).
+
+mission(paul, corinth, encouraging_church).
+mission(paul, ephesus, teaching_daily).
+mission(paul, philippi, strengthening_believers).`,
   },
 ]
 

@@ -157,6 +157,8 @@ function persist() {
           query: state.query,
           presetId: state.activePresetId,
           split: state.splitPercent,
+          resultsHeight: state.resultsHeight,
+          predicatesHeight: state.predicatesHeight,
           history: queryHistory.slice(0, MAX_HISTORY),
           fileName: currentFileName,
         }),
@@ -168,17 +170,24 @@ function persist() {
 /* ── State ── */
 
 const saved = loadSaved()
+const savedPreset = PRESETS.find((preset) => preset.id === saved?.presetId) || null
+const usingCustomSavedProgram = Boolean(saved?.source) && (saved?.presetId === '' || saved?.presetId == null)
+const initialPreset = savedPreset || PRESETS[0]
+const initialSource = usingCustomSavedProgram ? saved.source : initialPreset.program
+const initialQuery = usingCustomSavedProgram ? saved?.query || '' : initialPreset.query
 
 const state = reactive({
-  activePresetId: saved?.presetId ?? PRESETS[0].id,
-  source: saved?.source ?? PRESETS[0].program,
-  query: saved?.query ?? PRESETS[0].query,
-  world: buildWorld(saved?.source ?? PRESETS[0].program),
+  activePresetId: usingCustomSavedProgram ? '' : initialPreset.id,
+  source: initialSource,
+  query: initialQuery,
+  world: buildWorld(initialSource),
   results: [],
   runState: 'idle',
   error: '',
   statusLine: '',
   splitPercent: saved?.split ?? 50,
+  resultsHeight: saved?.resultsHeight ?? 248,
+  predicatesHeight: saved?.predicatesHeight ?? 248,
   autocompleteItems: [],
   autocompleteOpen: false,
   autocompleteIndex: 0,
@@ -1399,17 +1408,6 @@ const app = html`
 
     <div class="workspace" id="workspace">
       <div class="pane pane--left">
-        <div class="section section--editor">
-          <label class="section__label">Program</label>
-          <textarea
-            class="editor"
-            spellcheck="false"
-            .value="${() => state.source}"
-            @input="${handleSourceInput}"
-            @keydown="${handleEditorKeydown}"
-          ></textarea>
-        </div>
-
         <div class="${() => (state.autocompleteOpen && state.autocompleteItems.length ? 'query-stack is-open' : 'query-stack')}">
           <form class="query-bar" @submit="${executeQuery}">
             <span class="query-bar__prompt">?-</span>
@@ -1465,7 +1463,20 @@ const app = html`
               : ''}
         </div>
 
-        <div class="section section--results">
+        <div class="section section--editor">
+          <label class="section__label">Program</label>
+          <textarea
+            class="editor"
+            spellcheck="false"
+            .value="${() => state.source}"
+            @input="${handleSourceInput}"
+            @keydown="${handleEditorKeydown}"
+          ></textarea>
+        </div>
+
+        <div class="section-resizer" id="results-resizer" aria-hidden="true"></div>
+
+        <div class="section section--results" id="results-section">
           <div class="section__head">
             <label class="section__label">Results</label>
             <span class="section__meta">${() => (state.runState === 'idle' ? '⌘↵' : state.runState)}</span>
@@ -1486,7 +1497,9 @@ const app = html`
           ${worldGraph()}
         </div>
 
-        <div class="section section--predicates">
+        <div class="section-resizer" id="predicates-resizer" aria-hidden="true"></div>
+
+        <div class="section section--predicates" id="predicates-section">
           <div class="section__head">
             <label class="section__label">Predicates</label>
             <span class="section__meta">${() => state.world.predicates.length}</span>
@@ -1579,6 +1592,57 @@ document.addEventListener('drop', (event) => {
 
 const resizer = document.getElementById('resizer')
 const workspace = document.getElementById('workspace')
+const resultsSection = document.getElementById('results-section')
+const predicatesSection = document.getElementById('predicates-section')
+const resultsResizer = document.getElementById('results-resizer')
+const predicatesResizer = document.getElementById('predicates-resizer')
+
+function applyBottomSectionHeights() {
+  if (resultsSection) {
+    resultsSection.style.height = `${state.resultsHeight}px`
+  }
+
+  if (predicatesSection) {
+    predicatesSection.style.height = `${state.predicatesHeight}px`
+  }
+}
+
+function wireBottomResizer(resizerEl, sectionEl, paneSelector, stateKey) {
+  if (!resizerEl || !sectionEl) return
+
+  resizerEl.addEventListener('mousedown', (event) => {
+    event.preventDefault()
+    const pane = resizerEl.closest(paneSelector)
+    if (!pane) return
+
+    const paneRect = pane.getBoundingClientRect()
+
+    const onMove = (moveEvent) => {
+      const nextHeight = paneRect.bottom - moveEvent.clientY
+      const maxHeight = Math.min(360, paneRect.height * 0.45)
+      const clamped = Math.round(Math.max(140, Math.min(maxHeight, nextHeight)))
+      state[stateKey] = clamped
+      sectionEl.style.height = `${clamped}px`
+    }
+
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove)
+      document.removeEventListener('mouseup', onUp)
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+      persist()
+    }
+
+    document.body.style.cursor = 'row-resize'
+    document.body.style.userSelect = 'none'
+    document.addEventListener('mousemove', onMove)
+    document.addEventListener('mouseup', onUp)
+  })
+}
+
+applyBottomSectionHeights()
+wireBottomResizer(resultsResizer, resultsSection, '.pane--left', 'resultsHeight')
+wireBottomResizer(predicatesResizer, predicatesSection, '.pane--right', 'predicatesHeight')
 
 if (resizer && workspace) {
   if (state.splitPercent !== 50) {
