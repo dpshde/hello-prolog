@@ -122,31 +122,48 @@ async function refreshAutocomplete(input, forceOpen = true) {
   const requestId = ++autocompleteRequest
   queryCursor = field?.selectionStart ?? state.query.length
 
-  const nextItems = await queryIntellisense.getSuggestions({
-    program: state.source,
+  const quickItems = queryIntellisense.buildSuggestionsSync({
     world: state.world,
     query: state.query,
     cursor: queryCursor,
     maxSuggestions: MAX_SUGGESTIONS,
   })
 
-  if (requestId !== autocompleteRequest) {
-    return
-  }
-
-  state.autocompleteItems = nextItems
-
-  if (!nextItems.length) {
-    closeAutocomplete()
-    return
-  }
-
-  if (forceOpen) {
+  state.autocompleteItems = quickItems
+  if (quickItems.length && forceOpen) {
     state.autocompleteOpen = true
   }
+  state.autocompleteIndex = Math.max(0, Math.min(state.autocompleteIndex, quickItems.length - 1))
 
-  state.autocompleteIndex = Math.max(0, Math.min(state.autocompleteIndex, nextItems.length - 1))
-  scrollActiveAutocompleteIntoView()
+  try {
+    const nextItems = await queryIntellisense.getSuggestions({
+      program: state.source,
+      world: state.world,
+      query: state.query,
+      cursor: queryCursor,
+      maxSuggestions: MAX_SUGGESTIONS,
+    })
+
+    if (requestId !== autocompleteRequest) {
+      return
+    }
+
+    state.autocompleteItems = nextItems
+
+    if (!nextItems.length) {
+      closeAutocomplete()
+      return
+    }
+
+    if (forceOpen) {
+      state.autocompleteOpen = true
+    }
+
+    state.autocompleteIndex = Math.max(0, Math.min(state.autocompleteIndex, nextItems.length - 1))
+    scrollActiveAutocompleteIntoView()
+  } catch {
+    // keep the quick suggestions shown
+  }
 }
 
 function focusQueryInput(selectionStart, selectionEnd = selectionStart) {

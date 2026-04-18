@@ -162,6 +162,10 @@ export function createQueryIntellisense() {
     return ready
   }
 
+  function buildSuggestionsSync({ world, query, cursor, maxSuggestions }) {
+    return buildAutocompleteSuggestions({ session: null, world, query, cursor, maxSuggestions })
+  }
+
   async function getSuggestions({ program, world, query, cursor, maxSuggestions }) {
     const { session } = await ensureSession(program)
     return buildAutocompleteSuggestions({ session, world, query, cursor, maxSuggestions })
@@ -169,6 +173,7 @@ export function createQueryIntellisense() {
 
   return {
     syncProgram: ensureSession,
+    buildSuggestionsSync,
     getSuggestions,
   }
 }
@@ -212,8 +217,11 @@ function buildAutocompleteSuggestions({ session, world, query, cursor, maxSugges
       }
     })
 
-  return Array.from(deduped.values())
-    .filter((item) => isValidSuggestion(session, query, item, catalog))
+  const validated = session
+    ? Array.from(deduped.values()).filter((item) => isValidSuggestion(session, query, item, catalog))
+    : Array.from(deduped.values())
+
+  return validated
     .sort((left, right) => right.score - left.score || left.title.localeCompare(right.title))
     .slice(0, maxSuggestions)
 }
