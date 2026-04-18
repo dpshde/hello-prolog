@@ -3,135 +3,13 @@ import { html, reactive, svg } from '@arrow-js/core'
 import './style.css'
 
 import { PRESETS, buildWorld, runQuery } from './prolog.js'
+import { createQueryIntellisense } from './query-intellisense.js'
 
 /* ── Constants ── */
 
 const STORAGE_KEY = 'helloprolog:state'
 const MAX_HISTORY = 50
 const MAX_SUGGESTIONS = 8
-
-const PROLOG_TEACHING_SNIPPETS = [
-  {
-    id: 'teach-unify',
-    title: 'X = Value.',
-    insert: 'X = Value.',
-    kind: 'syntax',
-    meta: 'unification',
-    preview: '',
-    detail: 'Bind X to a value, or test whether two terms unify.',
-    selection: [0, 1],
-    keywords: ['equals', 'assign', 'bind', 'unify'],
-    weight: 20,
-  },
-  {
-    id: 'teach-and',
-    title: 'Goal1, Goal2.',
-    insert: 'Goal1, Goal2.',
-    kind: 'syntax',
-    meta: 'conjunction',
-    preview: '',
-    detail: 'Both goals must succeed, left to right.',
-    selection: [0, 5],
-    keywords: ['and', 'both', 'comma'],
-    weight: 18,
-  },
-  {
-    id: 'teach-or',
-    title: 'Goal1 ; Goal2.',
-    insert: 'Goal1 ; Goal2.',
-    kind: 'syntax',
-    meta: 'disjunction',
-    preview: '',
-    detail: 'Either goal may succeed.',
-    selection: [0, 5],
-    keywords: ['or', 'either', 'semicolon'],
-    weight: 17,
-  },
-  {
-    id: 'teach-not',
-    title: '\\+ Goal.',
-    insert: '\\+ Goal.',
-    kind: 'syntax',
-    meta: 'negation',
-    preview: '',
-    detail: 'Succeeds when Goal cannot be proven.',
-    selection: [3, 7],
-    keywords: ['not', 'negation', 'failure'],
-    weight: 16,
-  },
-  {
-    id: 'teach-member',
-    title: 'member(X, [a, b, c]).',
-    insert: 'member(X, [a, b, c]).',
-    kind: 'builtin',
-    meta: 'lists',
-    preview: '',
-    detail: 'Ask whether X belongs to a list, or generate members.',
-    selection: [7, 8],
-    keywords: ['list', 'contains', 'iterate'],
-    weight: 15,
-  },
-  {
-    id: 'teach-append',
-    title: 'append(Left, Right, Whole).',
-    insert: 'append(Left, Right, Whole).',
-    kind: 'builtin',
-    meta: 'lists',
-    preview: '',
-    detail: 'Split a list or join two lists into one.',
-    selection: [7, 11],
-    keywords: ['list', 'concat', 'split'],
-    weight: 14,
-  },
-  {
-    id: 'teach-length',
-    title: 'length(List, N).',
-    insert: 'length(List, N).',
-    kind: 'builtin',
-    meta: 'lists',
-    preview: '',
-    detail: 'Relate a list to its length.',
-    selection: [7, 11],
-    keywords: ['list', 'size', 'count'],
-    weight: 13,
-  },
-  {
-    id: 'teach-findall',
-    title: 'findall(X, Goal, List).',
-    insert: 'findall(X, Goal, List).',
-    kind: 'builtin',
-    meta: 'collect solutions',
-    preview: '',
-    detail: 'Gather every solution for Goal into List.',
-    selection: [8, 9],
-    keywords: ['collect', 'all', 'solutions'],
-    weight: 12,
-  },
-  {
-    id: 'teach-var',
-    title: 'var(X).',
-    insert: 'var(X).',
-    kind: 'builtin',
-    meta: 'type test',
-    preview: '',
-    detail: 'True when X is still an unbound variable.',
-    selection: [4, 5],
-    keywords: ['variable', 'unbound'],
-    weight: 10,
-  },
-  {
-    id: 'teach-atom',
-    title: 'atom(X).',
-    insert: 'atom(X).',
-    kind: 'builtin',
-    meta: 'type test',
-    preview: '',
-    detail: 'True when X is an atom like ada or mars.',
-    selection: [5, 6],
-    keywords: ['atom', 'symbol'],
-    weight: 9,
-  },
-]
 
 /* ── Persistence ── */
 
@@ -198,10 +76,12 @@ const state = reactive({
 })
 
 const queryHistory = saved?.history ?? []
+const queryIntellisense = createQueryIntellisense()
 let historyIndex = -1
 let historyDraft = ''
 let currentFileName = saved?.fileName ?? 'program.pl'
 let queryCursor = state.query.length
+let autocompleteRequest = 0
 let graphDrag = null
 
 /* ── World sync ── */
@@ -215,6 +95,12 @@ function syncWorld(program) {
   state.graphSelectedId = ''
   const s = state.world.stats
   state.statusLine = `${s.factCount} facts · ${s.entityCount} entities · ${s.predicateCount} predicates`
+  queryIntellisense.syncProgram(program)
+
+  const queryInput = getQueryInput()
+  if (queryInput && document.activeElement === queryInput) {
+    refreshAutocomplete(queryInput, state.autocompleteOpen)
+  }
 }
 
 syncWorld(state.source)
@@ -226,513 +112,27 @@ function getQueryInput() {
 }
 
 function closeAutocomplete() {
+  autocompleteRequest += 1
   state.autocompleteOpen = false
   state.autocompleteIndex = 0
 }
 
-function getCompletionContext(query, cursor) {
-  let start = cursor
-  let end = cursor
-
-  while (start > 0 && !/[\s(),.;]/.test(query[start - 1])) {
-    start -= 1
-  }
-
-  while (end < query.length && !/[\s(),.;]/.test(query[end])) {
-    end += 1
-  }
-
-  return {
-    start,
-    end,
-    token: query.slice(start, cursor),
-  }
-}
-
-function splitTopLevelArgs(text) {
-  const parts = []
-  let buffer = ''
-  let depth = 0
-  let quote = null
-
-  for (let index = 0; index < text.length; index += 1) {
-    const character = text[index]
-
-    if (quote) {
-      buffer += character
-      if (character === quote && text[index - 1] !== '\\') {
-        quote = null
-      }
-      continue
-    }
-
-    if (character === '\'' || character === '"') {
-      quote = character
-      buffer += character
-      continue
-    }
-
-    if (character === '(' || character === '[' || character === '{') {
-      depth += 1
-      buffer += character
-      continue
-    }
-
-    if (character === ')' || character === ']' || character === '}') {
-      depth = Math.max(0, depth - 1)
-      buffer += character
-      continue
-    }
-
-    if (character === ',' && depth === 0) {
-      parts.push(buffer.trim())
-      buffer = ''
-      continue
-    }
-
-    buffer += character
-  }
-
-  parts.push(buffer.trim())
-  return parts
-}
-
-function findMatchingParen(text, openIndex) {
-  let depth = 0
-  let quote = null
-
-  for (let index = openIndex; index < text.length; index += 1) {
-    const character = text[index]
-
-    if (quote) {
-      if (character === quote && text[index - 1] !== '\\') {
-        quote = null
-      }
-      continue
-    }
-
-    if (character === '\'' || character === '"') {
-      quote = character
-      continue
-    }
-
-    if (character === '(') {
-      depth += 1
-      continue
-    }
-
-    if (character === ')') {
-      depth -= 1
-      if (depth === 0) {
-        return index
-      }
-    }
-  }
-
-  return -1
-}
-
-function findCallContext(query, cursor) {
-  let depth = 0
-  let quote = null
-  let openIndex = -1
-
-  for (let index = cursor - 1; index >= 0; index -= 1) {
-    const character = query[index]
-
-    if (quote) {
-      if (character === quote && query[index - 1] !== '\\') {
-        quote = null
-      }
-      continue
-    }
-
-    if (character === '\'' || character === '"') {
-      quote = character
-      continue
-    }
-
-    if (character === ')') {
-      depth += 1
-      continue
-    }
-
-    if (character === '(') {
-      if (depth === 0) {
-        openIndex = index
-        break
-      }
-      depth -= 1
-    }
-  }
-
-  if (openIndex === -1) return null
-
-  let nameEnd = openIndex
-  let nameStart = nameEnd
-  while (nameStart > 0 && /[A-Za-z0-9_]/.test(query[nameStart - 1])) {
-    nameStart -= 1
-  }
-
-  const predicate = query.slice(nameStart, nameEnd).trim()
-  if (!predicate || !/^[a-z][\w]*$/i.test(predicate)) return null
-
-  const closeIndex = findMatchingParen(query, openIndex)
-  const sliceEnd = closeIndex === -1 ? query.length : closeIndex
-  const argText = query.slice(openIndex + 1, sliceEnd)
-  const beforeCursor = query.slice(openIndex + 1, cursor)
-  const argIndex = splitTopLevelArgs(beforeCursor).length - 1
-  const args = splitTopLevelArgs(argText)
-
-  return {
-    predicate,
-    argIndex: Math.max(0, argIndex),
-    args,
-  }
-}
-
-function normalizeQueryArg(text) {
-  const trimmed = text.trim()
-  if (!trimmed) return ''
-  if ((trimmed.startsWith("'") && trimmed.endsWith("'")) || (trimmed.startsWith('"') && trimmed.endsWith('"'))) {
-    return trimmed.slice(1, -1)
-  }
-  return trimmed
-}
-
-function getPreviousSignificantChar(query, index) {
-  for (let cursor = index - 1; cursor >= 0; cursor -= 1) {
-    if (!/\s/.test(query[cursor])) {
-      return query[cursor]
-    }
-  }
-
-  return ''
-}
-
-function getSyntaxContext(query, cursor) {
-  const call = findCallContext(query, cursor)
-  if (call) {
-    return { mode: 'term', call }
-  }
-
-  const completion = getCompletionContext(query, cursor)
-  const previous = getPreviousSignificantChar(query, completion.start)
-
-  if (previous === '=' || previous === '[' || previous === '|') {
-    return { mode: 'term', call: null }
-  }
-
-  return { mode: 'goal', call: null }
-}
-
-function isConcreteArgument(text) {
-  const trimmed = text.trim()
-  if (!trimmed) return false
-  if (/^[_A-Z]/.test(trimmed)) return false
-  return true
-}
-
-function formatQueryTerm(term) {
-  if (/^-?\d+(?:\.\d+)?$/.test(term)) return term
-  if (/^[a-z][\w]*$/.test(term)) return term
-  return `'${term.replace(/'/g, "\\'")}'`
-}
-
-function ordinalLabel(index) {
-  if (index === 1) return '1st arg'
-  if (index === 2) return '2nd arg'
-  if (index === 3) return '3rd arg'
-  return `${index}th arg`
-}
-
-function variableNamesForArity(arity) {
-  return Array.from({ length: arity }, (_, index) => ['A', 'B', 'C', 'D', 'E', 'F'][index] || `X${index + 1}`)
-}
-
-function tupleLabel(arity) {
-  if (arity === 1) return 'value'
-  if (arity === 2) return 'pair'
-  if (arity === 3) return 'triple'
-  return 'result'
-}
-
-function describePredicateSuggestion(predicate) {
-  const facts = state.world.facts.filter(
-    (fact) => fact.predicate === predicate.name && fact.arity === predicate.arity,
-  )
-
-  if (predicate.arity === 0) {
-    return {
-      meta: `${predicate.count} success${predicate.count === 1 ? '' : 'es'}`,
-      preview: '',
-      detail: 'succeeds if true',
-    }
-  }
-
-  const variableNames = variableNamesForArity(predicate.arity)
-  const firstFact = facts[0]
-  const countLabel = `${predicate.count} ${tupleLabel(predicate.arity)}${predicate.count === 1 ? '' : 's'}`
-
-  if (!firstFact) {
-    return {
-      meta: countLabel,
-      preview: '',
-      detail: 'matching bindings',
-    }
-  }
-
-  const preview = firstFact.args
-    .map((arg, index) => `${variableNames[index]} = ${arg}`)
-    .join(', ')
-
-  return {
-    meta: countLabel,
-    preview,
-    detail: 'example result',
-  }
-}
-
-function getPredicateSuggestions() {
-  return state.world.predicates.map((predicate) => {
-    const description = describePredicateSuggestion(predicate)
-
-    return {
-      id: `predicate:${predicate.id}`,
-      title: predicate.query,
-      insert: predicate.query,
-      kind: 'query',
-      meta: description.meta,
-      preview: description.preview,
-      detail: description.detail,
-      selection: null,
-      keywords: [predicate.name, predicate.sample, description.meta, description.preview],
-      weight: 40 + predicate.count,
-    }
-  })
-}
-
-function buildArgumentValueSuggestions(call, token) {
-  if (!call) return []
-
-  const matchingFacts = state.world.facts.filter((fact) => {
-    if (fact.predicate !== call.predicate) return false
-    if (fact.arity <= call.argIndex) return false
-
-    for (let index = 0; index < call.args.length; index += 1) {
-      if (index === call.argIndex) continue
-      const rawArg = call.args[index] || ''
-      if (!isConcreteArgument(rawArg)) continue
-      if (fact.args[index] !== normalizeQueryArg(rawArg)) {
-        return false
-      }
-    }
-
-    return true
-  })
-
-  const byValue = new Map()
-
-  matchingFacts.forEach((fact) => {
-    const value = fact.args[call.argIndex]
-    if (!value) return
-    const existing = byValue.get(value)
-    if (existing) {
-      existing.count += 1
-      return
-    }
-
-    const previewArgs = fact.args.map((arg, index) => {
-      const rawArg = call.args[index] || ''
-      if (index === call.argIndex) return formatQueryTerm(value)
-      if (isConcreteArgument(rawArg)) return formatQueryTerm(normalizeQueryArg(rawArg))
-      return formatQueryTerm(arg)
-    })
-
-    byValue.set(value, {
-      id: `arg:${call.predicate}:${call.argIndex}:${value}`,
-      title: formatQueryTerm(value),
-      insert: formatQueryTerm(value),
-      kind: 'value',
-      meta: ordinalLabel(call.argIndex + 1),
-      preview: `${call.predicate}(${previewArgs.join(', ')})`,
-      detail: 'from program',
-      selection: null,
-      keywords: [call.predicate, value, previewArgs.join(', ')],
-      weight: 160,
-      count: 1,
-    })
-  })
-
-  return Array.from(byValue.values())
-    .map((item) => ({
-      ...item,
-      weight: item.weight + item.count,
-    }))
-    .map(({ count, ...item }) => item)
-    .map((item) => ({
-      ...item,
-      score: scoreSuggestion(item, token),
-    }))
-    .filter((item) => item.score >= 0)
-}
-
-function getVariableSuggestions(query, token) {
-  const matches = Array.from(new Set(query.match(/\b[_A-Z][A-Za-z0-9_]*\b/g) || []))
-    .filter((name) => name !== '_')
-    .map((name) => ({
-      id: `var:${name}`,
-      title: name,
-      insert: name,
-      kind: 'var',
-      meta: 'variable',
-      preview: '',
-      detail: 'reuse variable',
-      selection: null,
-      keywords: [name],
-      weight: 120,
-    }))
-
-  return matches
-    .map((item) => ({ ...item, score: scoreSuggestion(item, token) }))
-    .filter((item) => item.score >= 0)
-}
-
-function getGenericTermSuggestions(token) {
-  const placeholders = [
-    {
-      id: 'term:X',
-      title: 'X',
-      insert: 'X',
-      kind: 'var',
-      meta: 'variable',
-      preview: '',
-      detail: 'new variable',
-      selection: null,
-      keywords: ['variable'],
-      weight: 90,
-    },
-    {
-      id: 'term:_',
-      title: '_',
-      insert: '_',
-      kind: 'var',
-      meta: 'anonymous',
-      preview: '',
-      detail: 'ignore this value',
-      selection: null,
-      keywords: ['anonymous', 'ignore'],
-      weight: 88,
-    },
-    {
-      id: 'term:[]',
-      title: '[]',
-      insert: '[]',
-      kind: 'term',
-      meta: 'empty list',
-      preview: '',
-      detail: 'list literal',
-      selection: null,
-      keywords: ['list', 'empty'],
-      weight: 86,
-    },
-    {
-      id: 'term:[Head|Tail]',
-      title: '[Head|Tail]',
-      insert: '[Head|Tail]',
-      kind: 'term',
-      meta: 'list pattern',
-      preview: '',
-      detail: 'head / tail list',
-      selection: [1, 5],
-      keywords: ['list', 'head', 'tail'],
-      weight: 84,
-    },
-  ]
-
-  const atoms = Array.from(new Set(state.world.entityNodes.map((node) => node.label)))
-    .map((label) => ({
-      id: `atom:${label}`,
-      title: formatQueryTerm(label),
-      insert: formatQueryTerm(label),
-      kind: 'atom',
-      meta: 'atom',
-      preview: '',
-      detail: 'value from program',
-      selection: null,
-      keywords: [label],
-      weight: 70,
-    }))
-
-  return [...placeholders, ...atoms]
-    .map((item) => ({ ...item, score: scoreSuggestion(item, token) }))
-    .filter((item) => item.score >= 0)
-}
-
-function getTermSuggestions(query, cursor) {
-  const syntax = getSyntaxContext(query, cursor)
-  const context = getCompletionContext(query, cursor)
-  const token = /^[_A-Z]/.test(context.token.trim()) ? '' : context.token
-
-  const specific = buildArgumentValueSuggestions(syntax.call, token)
-  const variables = getVariableSuggestions(query, token)
-  const generic = getGenericTermSuggestions(token)
-
-  const deduped = new Map()
-
-  ;[...specific, ...variables, ...generic].forEach((item) => {
-    const key = `${item.kind}:${item.title}`
-    if (!deduped.has(key)) {
-      deduped.set(key, item)
-    }
-  })
-
-  return Array.from(deduped.values())
-    .sort((left, right) => right.score - left.score || left.title.localeCompare(right.title))
-    .slice(0, MAX_SUGGESTIONS)
-}
-
-function scoreSuggestion(suggestion, token) {
-  if (!token) return suggestion.weight
-
-  const needle = token.toLowerCase()
-  const title = suggestion.title.toLowerCase()
-  const meta = suggestion.meta.toLowerCase()
-  const detail = suggestion.detail.toLowerCase()
-  const keywords = (suggestion.keywords || []).join(' ').toLowerCase()
-
-  if (title.startsWith(needle)) return suggestion.weight + 100
-  if (meta.startsWith(needle)) return suggestion.weight + 80
-  if (title.includes(needle)) return suggestion.weight + 60
-  if (meta.includes(needle)) return suggestion.weight + 40
-  if (detail.includes(needle) || keywords.includes(needle)) return suggestion.weight + 20
-  return -1
-}
-
-function buildAutocompleteSuggestions(query, cursor) {
-  const context = getCompletionContext(query, cursor)
-  const syntax = getSyntaxContext(query, cursor)
-
-  if (syntax.mode === 'term') {
-    return getTermSuggestions(query, cursor)
-  }
-
-  const pool = [...getPredicateSuggestions(), ...PROLOG_TEACHING_SNIPPETS]
-
-  return pool
-    .map((item) => ({
-      ...item,
-      score: scoreSuggestion(item, context.token),
-    }))
-    .filter((item) => item.score >= 0)
-    .sort((left, right) => right.score - left.score || left.title.localeCompare(right.title))
-    .slice(0, MAX_SUGGESTIONS)
-}
-
-function refreshAutocomplete(input, forceOpen = true) {
+async function refreshAutocomplete(input, forceOpen = true) {
   const field = input || getQueryInput()
+  const requestId = ++autocompleteRequest
   queryCursor = field?.selectionStart ?? state.query.length
-  const nextItems = buildAutocompleteSuggestions(state.query, queryCursor)
+
+  const nextItems = await queryIntellisense.getSuggestions({
+    program: state.source,
+    world: state.world,
+    query: state.query,
+    cursor: queryCursor,
+    maxSuggestions: MAX_SUGGESTIONS,
+  })
+
+  if (requestId !== autocompleteRequest) {
+    return
+  }
 
   state.autocompleteItems = nextItems
 
@@ -767,10 +167,9 @@ function scrollActiveAutocompleteIntoView() {
 }
 
 function applyAutocomplete(item) {
-  const input = getQueryInput()
-  const cursor = input?.selectionStart ?? queryCursor
-  const context = getCompletionContext(state.query, cursor)
-  const nextQuery = `${state.query.slice(0, context.start)}${item.insert}${state.query.slice(context.end)}`
+  const replaceStart = item.replaceStart ?? queryCursor
+  const replaceEnd = item.replaceEnd ?? replaceStart
+  const nextQuery = `${state.query.slice(0, replaceStart)}${item.insert}${state.query.slice(replaceEnd)}`
 
   state.query = nextQuery
   state.error = ''
@@ -778,8 +177,9 @@ function applyAutocomplete(item) {
   closeAutocomplete()
   persist()
 
-  const start = context.start + (item.selection ? item.selection[0] : item.insert.length)
-  const end = context.start + (item.selection ? item.selection[1] : item.insert.length)
+  const start = replaceStart + (item.selection ? item.selection[0] : item.insert.length)
+  const end = replaceStart + (item.selection ? item.selection[1] : item.insert.length)
+  queryCursor = start
   focusQueryInput(start, end)
 }
 

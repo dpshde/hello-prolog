@@ -228,6 +228,79 @@ function normalizeTerm(rawTerm) {
   return trimmed
 }
 
+function splitClause(statement) {
+  let depth = 0
+  let quote = null
+
+  for (let index = 0; index < statement.length - 1; index += 1) {
+    const character = statement[index]
+    const next = statement[index + 1]
+
+    if (quote) {
+      if (character === quote && statement[index - 1] !== '\\') {
+        quote = null
+      }
+      continue
+    }
+
+    if (character === '\'' || character === '"') {
+      quote = character
+      continue
+    }
+
+    if (character === '(' || character === '[' || character === '{') {
+      depth += 1
+      continue
+    }
+
+    if (character === ')' || character === ']' || character === '}') {
+      depth = Math.max(0, depth - 1)
+      continue
+    }
+
+    if (character === ':' && next === '-' && depth === 0) {
+      return {
+        head: statement.slice(0, index).trim(),
+        body: statement.slice(index + 2).trim(),
+      }
+    }
+  }
+
+  return {
+    head: statement.trim(),
+    body: '',
+  }
+}
+
+function parseClauseHead(statement, index) {
+  const trimmed = statement.trim()
+  if (!trimmed || trimmed.startsWith(':-')) {
+    return null
+  }
+
+  const { head } = splitClause(trimmed)
+  if (!head) {
+    return null
+  }
+
+  const match = head.match(/^([a-z][\w]*)\s*(?:\((.*)\))?$/i)
+  if (!match) {
+    return null
+  }
+
+  const [, predicate, rawArgs = ''] = match
+  const args = rawArgs ? splitTopLevel(rawArgs).map(normalizeTerm) : []
+
+  return {
+    id: `clause-${index}`,
+    predicate,
+    args,
+    arity: args.length,
+    statement: `${trimmed}.`,
+    head: `${head}.`,
+  }
+}
+
 function parseFact(statement, index) {
   const trimmed = statement.trim()
   if (!trimmed || trimmed.startsWith(':-') || trimmed.includes(':-')) {
@@ -269,18 +342,26 @@ function layoutRing(nodes, radius, centerX, centerY, angleOffset) {
   })
 }
 
-export function makePredicateQuery(predicate, arity) {
+export function makePredicateGoal(predicate, arity) {
   if (arity <= 0) {
-    return `${predicate}.`
+    return predicate
   }
 
   const variableNames = ['A', 'B', 'C', 'D', 'E', 'F']
   const args = Array.from({ length: arity }, (_, index) => variableNames[index] || `X${index + 1}`)
-  return `${predicate}(${args.join(', ')}).`
+  return `${predicate}(${args.join(', ')})`
+}
+
+export function makePredicateQuery(predicate, arity) {
+  return `${makePredicateGoal(predicate, arity)}.`
 }
 
 export function buildWorld(program) {
-  const facts = splitStatements(program)
+  const statements = splitStatements(program)
+  const clauseHeads = statements
+    .map((statement, index) => parseClauseHead(statement, index))
+    .filter(Boolean)
+  const facts = statements
     .map((statement, index) => parseFact(statement, index))
     .filter(Boolean)
 
@@ -307,20 +388,22 @@ export function buildWorld(program) {
     return next
   }
 
-  facts.forEach((fact, index) => {
-    const summary = predicateMap.get(fact.predicate) || {
-      id: fact.predicate,
-      name: fact.predicate,
+  clauseHeads.forEach((clause) => {
+    const indicator = `${clause.predicate}/${clause.arity}`
+    const summary = predicateMap.get(indicator) || {
+      id: indicator,
+      name: clause.predicate,
       count: 0,
-      arity: fact.arity,
-      sample: fact.statement,
-      query: makePredicateQuery(fact.predicate, fact.arity),
+      arity: clause.arity,
+      sample: clause.statement,
+      query: makePredicateQuery(clause.predicate, clause.arity),
     }
 
     summary.count += 1
-    summary.arity = Math.max(summary.arity, fact.arity)
-    predicateMap.set(fact.predicate, summary)
+    predicateMap.set(indicator, summary)
+  })
 
+  facts.forEach((fact, index) => {
     if (fact.arity === 1) {
       const entity = ensureEntity(fact.args[0])
       if (!entity.tags.includes(fact.predicate)) {
@@ -382,7 +465,7 @@ export function buildWorld(program) {
   const nodes = [...entityNodes, ...innerNodes]
   const nodeLookup = Object.fromEntries(nodes.map((node) => [node.id, node]))
   const predicates = Array.from(predicateMap.values()).sort(
-    (left, right) => right.count - left.count || left.name.localeCompare(right.name),
+    (left, right) => right.count - left.count || left.name.localeCompare(right.name) || left.arity - right.arity,
   )
 
   return {
