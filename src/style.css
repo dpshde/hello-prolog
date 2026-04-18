@@ -316,9 +316,11 @@ textarea {
   border-top: none;
   border-radius: 0 0 8px 8px;
   background: var(--surface);
-  box-shadow: 0 8px 18px rgba(28, 25, 23, 0.05);
+  box-shadow:
+    0 4px 6px rgba(28, 25, 23, 0.03),
+    0 12px 24px rgba(28, 25, 23, 0.06);
   overflow: hidden;
-  max-height: min(360px, calc(100vh - 140px));
+  max-height: min(380px, calc(100vh - 140px));
 }
 
 .autocomplete-panel__header {
@@ -326,40 +328,40 @@ textarea {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 8px 10px;
+  padding: 6px 12px;
   border-bottom: 1px solid var(--border);
-  background: #fcfbfa;
-  color: var(--text-2);
-  font-size: 11px;
-}
-
-.autocomplete-panel__header span {
-  font-weight: 600;
-  color: var(--text);
+  background: color-mix(in srgb, var(--surface) 96%, var(--bg));
+  color: var(--text-3);
+  font-size: 10px;
+  font-family: var(--mono);
+  letter-spacing: 0.02em;
 }
 
 .autocomplete-panel__header small {
-  font-family: var(--mono);
-  font-size: 10px;
   color: var(--text-3);
+  font-size: 10px;
 }
 
 .autocomplete-list {
-  max-height: min(300px, calc(100vh - 190px));
-  overflow: auto;
+  max-height: min(320px, calc(100vh - 190px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
 }
 
 .autocomplete-item {
   width: 100%;
-  display: grid;
-  grid-template-columns: 56px 1fr;
-  gap: 8px;
-  padding: 8px 10px;
+  display: flex;
+  align-items: baseline;
+  gap: 0;
+  padding: 7px 12px;
   border: none;
   border-bottom: 1px solid var(--border);
   background: transparent;
   text-align: left;
   cursor: pointer;
+  transition: background 60ms;
 }
 
 .autocomplete-item:last-child {
@@ -371,29 +373,70 @@ textarea {
   background: var(--accent-bg);
 }
 
+.autocomplete-item.is-active {
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
 .autocomplete-item__kind {
+  flex-shrink: 0;
   display: inline-flex;
-  align-items: flex-start;
-  justify-content: flex-start;
-  padding-top: 1px;
-  font-family: var(--mono);
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--accent);
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  margin-right: 8px;
+  border-radius: 3px;
+  font-family: var(--sans);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--surface);
+  user-select: none;
+}
+
+.autocomplete-item__kind[data-kind="goal"],
+.autocomplete-item__kind[data-kind="builtin"] {
+  background: var(--accent);
+}
+
+.autocomplete-item__kind[data-kind="query"] {
+  background: var(--accent);
+}
+
+.autocomplete-item__kind[data-kind="syntax"],
+.autocomplete-item__kind[data-kind="op"] {
+  background: var(--text-3);
+}
+
+.autocomplete-item__kind[data-kind="value"],
+.autocomplete-item__kind[data-kind="atom"] {
+  background: var(--text-2);
+}
+
+.autocomplete-item__kind[data-kind="var"],
+.autocomplete-item__kind[data-kind="term"] {
+  background: var(--border-strong);
+  color: var(--text-2);
+}
+
+.autocomplete-item__kind[data-kind="close"] {
+  background: var(--border-strong);
+  color: var(--text-3);
 }
 
 .autocomplete-item__body {
-  display: grid;
-  gap: 2px;
+  flex: 1;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
 }
 
 .autocomplete-item__top {
   display: flex;
   align-items: baseline;
-  justify-content: space-between;
-  gap: 10px;
+  gap: 6px;
   min-width: 0;
 }
 
@@ -408,9 +451,9 @@ textarea {
 .autocomplete-item__meta {
   flex-shrink: 0;
   font-size: 10px;
+  font-family: var(--mono);
   color: var(--text-3);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  white-space: nowrap;
 }
 
 .autocomplete-item__secondary {
@@ -418,11 +461,21 @@ textarea {
   line-height: 1.35;
   color: var(--text-2);
   overflow-wrap: anywhere;
+  padding-left: 0;
 }
 
 .autocomplete-item__secondary--code {
   display: inline-block;
   font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-2);
+}
+
+.autocomplete-item.is-active .autocomplete-item__title {
+  color: var(--accent);
+}
+
+.autocomplete-item.is-active .autocomplete-item__secondary--code {
   color: var(--text);
 }
 
@@ -743,18 +796,9 @@ textarea {
     display: none;
   }
 
-  .autocomplete-item {
-    grid-template-columns: 48px 1fr;
-  }
-
   .autocomplete-item__top {
     flex-direction: column;
     align-items: flex-start;
     gap: 1px;
-  }
-
-  .autocomplete-panel__header {
-    align-items: flex-start;
-    flex-direction: column;
   }
 }

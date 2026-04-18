@@ -834,8 +834,7 @@ const app = html`
               ? html`
                   <section class="autocomplete-panel">
                     <header class="autocomplete-panel__header">
-                      <span>Intellisense</span>
-                      <small>↑ ↓ navigate · Tab accept · ↵ insert</small>
+                      <small>↑↓ · Tab · ↵</small>
                     </header>
                     <div class="autocomplete-list">
                       ${state.autocompleteItems.map((item, index) => html`
@@ -845,7 +844,7 @@ const app = html`
                           @click="${(event) => chooseAutocomplete(item, event)}"
                           type="button"
                         >
-                          <span class="autocomplete-item__kind">${item.kind}</span>
+                          <span class="autocomplete-item__kind" data-kind="${item.kind}">${item.kind[0].toUpperCase()}</span>
                           <span class="autocomplete-item__body">
                             <span class="autocomplete-item__top">
                               <strong class="autocomplete-item__title">${item.title}</strong>
@@ -853,7 +852,9 @@ const app = html`
                             </span>
                             ${item.preview
                               ? html`<code class="autocomplete-item__secondary autocomplete-item__secondary--code">${item.preview}</code>`
-                              : html`<span class="autocomplete-item__secondary">${item.detail}</span>`}
+                              : item.detail && item.kind !== 'close' && item.kind !== 'op' && item.kind !== 'syntax'
+                                ? html`<span class="autocomplete-item__secondary">${item.detail}</span>`
+                                : ''}
                           </span>
                         </button>
                       `.key(item.id))}
